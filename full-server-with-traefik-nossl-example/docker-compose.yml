@@ -1,0 +1,178 @@
+version: '3.5'
+
+services:
+  # Reverse Proxy configuration
+  traefik:
+    image: traefik:latest
+    restart: always
+    networks:
+      - traefik-net
+    command:
+      - "--log.level=DEBUG"
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    labels:
+      - "traefik.enable=true"
+      # Dashboard / API related configuration
+      - "traefik.http.routers.traefik.rule=Host(`${HOST}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.entrypoints=web"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+
+  #########################
+  # Panorama Web Services #
+  #########################
+
+  ## Central APP4MC Services, required for basic operations
+  # APP4MC Cloud Manager
+  app4mc-cloud-manager:
+    image: gitlab-registry.idial.institute/app4mc/org.eclipse.app4mc.cloud.manager:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.manager.rule=Host(`${HOST}`)"
+      - "traefik.http.routers.manager.entrypoints=web"
+      - "traefik.http.routers.manager.service=manager-redir"
+      - "traefik.http.services.manager-redir.loadbalancer.server.port=8080"
+
+  # APP4MC Migration Service, used to migrate amalthea models to specific versions
+  app4mc-cloud-migration:
+    image: gitlab-registry.idial.institute/app4mc/org.eclipse.app4mc.cloud.migration:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.migration.rule=Host(`${HOST}`) && PathPrefix(`/app4mc/migration`)"
+      - "traefik.http.routers.migration.entrypoints=web"
+      - "traefik.http.routers.migration.service=migration-redir"
+      - "traefik.http.services.migration-redir.loadbalancer.server.port=8080"
+
+  # APP4MC Validation
+  app4mc-cloud-validation:
+    image: gitlab-registry.idial.institute/app4mc/org.eclipse.app4mc.cloud.validation:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.validation.rule=Host(`${HOST}`) && PathPrefix(`/app4mc/validation`)"
+      - "traefik.http.routers.validation.entrypoints=web"
+      - "traefik.http.routers.validation.service=validation-redir"
+      - "traefik.http.services.validation-redir.loadbalancer.server.port=8181"
+
+  ## Simulation Services
+  # APP4MC Amlt2SystemC Converter, used to transform amalthea models into systemc code
+  app4mc-cloud-ama2systemc:
+    image: gitlab-registry.idial.institute/app4mc/org.eclipse.app4mc.cloud.amlt2systemc:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.ama2sysc.rule=Host(`${HOST}`) && PathPrefix(`/app4mc/amlt2systemc`)"
+      - "traefik.http.routers.ama2sysc.entrypoints=web"
+      - "traefik.http.routers.ama2sysc.service=ama2sysc-redir"
+      - "traefik.http.services.ama2sysc-redir.loadbalancer.server.port=8282"
+
+  # APP4MC Simulation service, used to build and run systemc code that is generated from amalthea models
+  app4mc-cloud-simulation:
+    image: gitlab-registry.idial.institute/panorama.systemc.group/org.eclipse.app4mc.cloud.app4mcsim:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.simulation.rule=Host(`${HOST}`) && PathPrefix(`/app4mc/simulation`)"
+      - "traefik.http.routers.simulation.entrypoints=web"
+      - "traefik.http.routers.simulation.service=app4mc-simulation"
+      - "traefik.http.services.app4mc-simulation.loadbalancer.server.port=2323"
+
+  ## Design Space Exploration Services
+  # APP4MC RTC Analysis, conducts static performance analysis on amalthea models using Real-Time Calculus (RTC)
+  app4mc-rtc-analysis:
+    image: gitlab-registry.idial.institute/panorama.project/src/org.eclipse.app4mc.cloud/org.eclipse.app4mc.cloud.rtc.controller:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.rtc-analysis.rule=Host(`${HOST}`) && PathPrefix(`/app4mc/analysis`)"
+      - "traefik.http.routers.rtc-analysis.entrypoints=web"
+      - "traefik.http.routers.rtc-analysis.service=rtc-analysis"
+      - "traefik.http.services.rtc-analysis.loadbalancer.server.port=8081"
+
+  # APP4MC Performance Assessment Service, derives various performance metrics from amalthea models using static analysis techniques
+  app4mc-performance-analysis:
+    image: gitlab-registry.idial.institute/dse-cloud/analysis-cloud:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.perf-analysis-https.rule=Host(`${HOST}`) && PathPrefix(`/app4mc/analysis/waters2019`)"
+      - "traefik.http.routers.perf-analysis-https.entrypoints=web"
+      - "traefik.http.routers.perf-analysis-https.service=perf-analysis-service"
+      - "traefik.http.services.perf-analysis-service.loadbalancer.server.port=8081"
+
+  # APP4MC Model Analysis, derives various structural metrics from amalthea models
+  app4mc-model-analysis:
+    image: gitlab-registry.idial.institute/panorama.project/src/org.eclipse.app4mc.cloud/org.eclipse.app4mc.cloud.modelanalysis.controller:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.model-analysis.rule=Host(`${HOST}`) && PathPrefix(`/app4mc/interpreter/labels`)"
+      - "traefik.http.routers.model-analysis.entrypoints=web"
+      - "traefik.http.routers.model-analysis.service=model-analysis-service"
+      - "traefik.http.services.model-analysis-service.loadbalancer.server.port=8084"
+
+  # APP4MC Optimization Service, optimizes the deployment of amalthea models using a genetic algorithm
+  app4mc-cloud-optimization:
+    image: gitlab-registry.idial.institute/dse-cloud/optimization-cloud:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.optimizer-https.rule=Host(`${HOST}`) && PathPrefix(`/app4mc/optimization/waters2019`)"
+      - "traefik.http.routers.optimizer-https.entrypoints=web"
+      - "traefik.http.routers.optimizer-https.service=app4mc-optimizer"
+      - "traefik.http.services.app4mc-optimizer.loadbalancer.server.port=8084"
+
+  # APP4MC Chart Visualizer
+  app4mc-chart-visualizer:
+    image: gitlab-registry.idial.institute/panorama.project/src/org.eclipse.app4mc.cloud/org.eclipse.app4mc.cloud.visualization.controller:latest
+    restart: always
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.chart-visualizer.rule=Host(`${HOST}`) && PathPrefix(`/app4mc/visualization`)"
+      - "traefik.http.routers.chart-visualizer.entrypoints=web"
+      - "traefik.http.routers.chart-visualizer.service=chart-visualizer-service"
+      - "traefik.http.services.chart-visualizer-service.loadbalancer.server.port=8083"
+
+networks:
+   traefik-net:
+      driver: bridge
+      name: traefik-net
